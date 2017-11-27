@@ -33,8 +33,8 @@ class Poisson_solver{
 public:
   Poisson_solver(const double x1, const double y1,
                  const double x2, const double y2,
-                 const int grid_x, const int grid_y,
-                 const double eps, const int step_iterations_ = 1);
+                 const int grid_x_, const int grid_y_,
+                 const double eps_, const int step_iterations_ = 1);
   virtual ~Poisson_solver();
 
   void Solve(const Process_info& process_in,
@@ -52,6 +52,9 @@ public:
 
   const int grid_x, grid_y;
   const double eps;
+
+  int num_iterations;
+  int step_iterations;
 
 protected:
   virtual double F(const double x, const double y) const = 0;
@@ -77,11 +80,11 @@ private:
   double* p;
   double* p_prev;
 
-  double* send_message_lr; double* recv_message_lr;
-  double* send_message_rl; double* recv_message_rl;
-  double* send_message_td; double* recv_message_td;
-  double* send_message_bu; double* recv_message_bu;
+  double* send_lr; double* recv_lr;
+  double* send_rl; double* recv_rl;
+  double* send_ud; double* recv_ud;
+  double* send_du; double* recv_du;
 
-  MPI_Request* recive;
+  MPI_Request* receive;
   MPI_Request* send;
 };

@@ -120,7 +120,52 @@ Poisson_solver::~Poisson_solver(){
   receive != NULL ? delete [] receive; receive = NULL :
 }
 
+MPI_Comm Poisson_solver::Build_MPI_communicator(const Process_info& process_in,
+                                const int x_proc_num, const int y_proc_num){
+  MPI_Comm comm;
+  int color = 1;
+  int id = process_in.rank
+  if (id < x_proc_num * y_proc_num){
+      MPI_Comm_split(MPI_COMM_WORLD, color, id, &comm);
+  } else {
+      MPI_Comm_split(MPI_COMM_WORLD, MPI_UNDEFINED, id, &comm);
+  }
+  return comm;
+}
+
 Poisson_solver::Solve(const Process_info& process_in,
            const int x_proc_num, const int y_proc_num){
+  MPI_Comm comm = Build_MPI_communicator(process_in, x_proc_num, y_proc_num);
+  Process_info = Precoess_info(comm)
+  Process_params = Process_params(Process_info, grid_x, grid_y, x_proc_num, y_proc_num);
+
+ int shape = ProcParams.x_cells_num * ProcParams.y_cells_num;
+
+ if (p != NULL){ delete [] p; p = NULL; }
+ if (p_prev != NULL){ delete [] p_prev; p_prev = NULL; }
+
+ p = new double [shape]();
+ p_prev = new double [shape]();
+ double* r =  new double [shape]();
+ double*  g = new double [shape]();
+ double* delta_p = new double [shape]();
+ double* delta_r = new double [shape]();;
+ double* delta_g = new double [shape]();
+
+ double dg_dot_g = 1;
+ double dr_dot_g = 1;
+ double r_dot_g = 1;
+ double alpha = 0;
+ double tau = 0;
+
+ Init_p();
+
+ num_iterations = 0;
+
+ do{
+   Compute_diff_scheme(delta_p, p_prev);
+   Compute_r(r, delta_p);
+
+ } while();
 
 }

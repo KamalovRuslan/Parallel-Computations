@@ -40,10 +40,10 @@ public:
   void Solve(const Process_info& process_in,
              const int x_proc_num, const int y_proc_num);
 
-  double* get_solution () const { return p; }
-  int get_iterations () const { return num_iterations; }
-  Process_info get_process_info () const { return Process_info; }
-  Process_params get_process_params () const { return Process_params; }
+  double* get_solution() const { return p; }
+  int get_iterations() const { return num_iterations; }
+  Process_info get_process_info() const { return Process_info; }
+  Process_params get_process_params() const { return Process_params; }
 
   const double x_1, y_1;
   const double x_2, y_2;
@@ -61,6 +61,8 @@ protected:
   virtual double phi(const double x, const double y) const = 0;
   virtual bool Stop(const double* const f1, const double* const f2);
 
+  void Init_p();
+
   MPI_Comm Build_MPI_communicator(const Process_info& process_in,
                                   const int x_proc_num, const int y_proc_num) const;
 private:
@@ -71,6 +73,8 @@ private:
   void Compute_r(double* const r, const double* const delta_p) const;
   void Compute_g(double* const g, const double* const r, const double alpha) const;
   void Compute_p(const double tau, const double* const g);
+
+  void Init_p();
 
   Process_info process_info;
   Process_params process_params;

@@ -98,7 +98,7 @@ float Solver::ProcessDot(float var, const int rank, const int size){
           processes_sum = new float[size];
       }
 
-      MPI_Gather(&var, 1, MPI_FLOAT, sums, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+      MPI_Gather(&var, 1, MPI_FLOAT, processes_sum, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
       float sum = 0.0f;
       if (rank == 0) {
@@ -109,6 +109,24 @@ float Solver::ProcessDot(float var, const int rank, const int size){
 
       MPI_Bcast(&sum, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
       return sum;
+}
+
+float Solver::ProcessMax(float var, const int rank, const int size){
+      float *processes_max;
+      if (rank == 0){
+          processes_max = new float[size];
+      }
+
+      MPI_Gather(&var, 1, MPI_FLOAT, processes_max, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+      float max;
+      if (rank == 0) {
+          max = max(processes_max);
+          delete [] processes_max;
+      }
+
+      MPI_Bcast(&max, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+      return max;
 }
 
 void Solver::ProcessConform(grid& p, const int rank, const int blocks_x,
@@ -371,9 +389,9 @@ void Solver::Solve(int argc, char** argv){
 			}
 		}
 
-		float scalar1 = ScalarDot(term, term);
-		scalar1 = ProcessDot(scalar1, world_rank, world_size);
-		if (sqrt(scalar1) < eps) {
+		float maximum = max(term);  // Stop Criteria
+		maximum = ProcessMax(maximum, rank, size);
+		if (maximum < eps) {
 			break;
 		}
 
@@ -436,7 +454,7 @@ void Solver::Solve(int argc, char** argv){
 		}
 	}
 
-	cout << sqrt(ScalarDot(error, error)) << endl;
+	cout << max(error) << endl;
 	cout << count << endl;
 	ofstream res, correct, err;
 

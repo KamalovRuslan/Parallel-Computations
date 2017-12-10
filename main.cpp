@@ -13,7 +13,7 @@ using namespace std;
 int main(int argc, char** argv){
 	solver = Solver();
 	try{
-		solver.Solve();
+		solver.Solve(argc, argv);
 	}
 	catch (exception& e) {
         cout << e.what() << endl;

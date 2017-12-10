@@ -37,7 +37,7 @@ class Solver{
       void   ProcessConform(Poisson& p, const int rank, const int blocks_x,
                                      const int blocks_y);
 
-	  void   Solve();
+	  void   Solve(int argc, char** argv);
   public:
 	  Solver();
 	  Solver(const int dimension,

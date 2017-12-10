@@ -52,6 +52,16 @@ double Poisson::max() const{
 	return maximum;
 }
 
+double Solver::F(const double x, const double y) const{
+	double num = 8.0 * (1.0 - x * x -  y * y);
+	double denum = (1 + x * x + y * y);
+	return num / (denum * denum * denum);
+}
+
+double Solver::phi(const double x, const double y) const{
+	return 2.0 / (1 + x * x + y * y);
+}
+
 double Solver::x(const int index, const int shift) const{
       return lx + (index + shift) * delta;
 }
@@ -81,8 +91,8 @@ Solver::Solver() :
 	   dimension(1000),
 	   lx(0.0), rx(2.0),
 	   ly(0.0), ry(2.0),
-	   eps(1e-4), delta((rx - lx) / dimension),
-	   delta2(delta * delta)
+	   delta((rx - lx) / dimension), delta2(delta * delta),
+	   eps(1e-4)
 	   { }
 
 Solver::Solver(const int dimension,
@@ -93,8 +103,8 @@ Solver::Solver(const int dimension,
 	   dimension(dimension),
 	   lx(lx), rx(rx),
 	   ly(ly), ry(ry),
-	   eps(eps), delta(delta),
-	   delta2(delta * delta)
+	   delta(delta), delta2(delta * delta),
+	   eps(eps)
 	   { }
 
 float Solver::ProcessDot(float var, const int rank, const int size) const{

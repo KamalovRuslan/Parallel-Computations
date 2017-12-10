@@ -11,7 +11,7 @@ using namespace std;
 #include "Poisson.h"
 
 int main(int argc, char** argv){
-	solver = Solver();
+	Solver solver;
 	try{
 		solver.Solve(argc, argv);
 	}

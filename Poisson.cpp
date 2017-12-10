@@ -36,28 +36,36 @@ Poisson& Poisson::operator=(const Poisson& tmp) {
     return *this;
 }
 
-int Poisson::size_x(){
+int Poisson::size_x() const{
       return grid_x;
 }
 
-int Poisson::size_y(){
+int Poisson::size_y() const{
       return grid_y;
 }
 
-double Solver::x(const int index, const int shift){
+double Poisson::max() const{
+	double maximum = grid[0];
+    for (int i = 1; i < grid_x * grid_y; i++) {
+        maximum = maximum < grid[i] ? grid[i] : maximum;
+    }
+	return maximum;
+}
+
+double Solver::x(const int index, const int shift) const{
       return lx + (index + shift) * delta;
 }
 
-double Solver::y(const int index, const int shift){
+double Solver::y(const int index, const int shift) const{
       return ly + (index + shift) * delta;
 }
 
-double Solver::DiffScheme(const grid& const p, const int i, const int j){
+double Solver::DiffScheme(Poisson& p, int i, int j) const{
       return ((2 * p(i, j) - p(i - 1, j) - p(i + 1, j))  +
               (2 * p(i, j) - p(i, j - 1) - p(i, j + 1))) / delta2;
 }
 
-double Solver::ScalarDot(const grid& const p, const grid& const q){
+double Solver::ScalarDot(Poisson& p, Poisson& q) const{
       double scalar_dot = 0;
       int size_x = p.size_x();
       int size_y = p.size_y();
@@ -69,16 +77,13 @@ double Solver::ScalarDot(const grid& const p, const grid& const q){
     return scalar_dot;
 }
 
-Solver::Solver(){
-	const int dimension = 1000;
-	const double lx     = 0.0;
-	const double rx     = 2.0;
-	const double l_y    = 0.0;
-	const double r_y    = 2.0;
-	const double delta  = (rx - lx) / dimension;
-	const double eps    = 1e-4;
-	const double delta2 = delta * delta;
-}
+Solver::Solver() :
+	   dimension(1000),
+	   lx(0.0), rx(2.0),
+	   ly(0.0), ry(2.0),
+	   eps(1e-4), delta((rx - lx) / dimension),
+	   delta2(delta * delta)
+	   { }
 
 Solver::Solver(const int dimension,
 	   const int lx, const int rx,
@@ -92,7 +97,7 @@ Solver::Solver(const int dimension,
 	   delta2(delta * delta)
 	   { }
 
-float Solver::ProcessDot(float var, const int rank, const int size){
+float Solver::ProcessDot(float var, const int rank, const int size) const{
       float *processes_sum;
       if (rank == 0){
           processes_sum = new float[size];
@@ -111,7 +116,7 @@ float Solver::ProcessDot(float var, const int rank, const int size){
       return sum;
 }
 
-float Solver::ProcessMax(float var, const int rank, const int size){
+float Solver::ProcessMax(float var, const int rank, const int size) const{
       float *processes_max;
       if (rank == 0){
           processes_max = new float[size];
@@ -121,7 +126,9 @@ float Solver::ProcessMax(float var, const int rank, const int size){
 
       float max;
       if (rank == 0) {
-          max = max(processes_max);
+		  max = processes_max[0];
+		  for (int i = 1; i < size; i++)
+              max = max < processes_max[i] ? processes_max[i] : max;
           delete [] processes_max;
       }
 
@@ -129,7 +136,7 @@ float Solver::ProcessMax(float var, const int rank, const int size){
       return max;
 }
 
-void Solver::ProcessConform(grid& p, const int rank, const int blocks_x,
+void Solver::ProcessConform(Poisson& p, const int rank, const int blocks_x,
                                const int blocks_y){
       const int block_pos_x = rank / blocks_y;
       const int block_pos_y = rank % blocks_y;
@@ -155,9 +162,9 @@ void Solver::ProcessConform(grid& p, const int rank, const int blocks_x,
       MPI_Request send_request_up, send_request_bottom;
 
       up     = block_pos_x == 0                ? false : true;
-      bottom = block_pos_x == num_blocks_x - 1 ? false : true;
+      bottom = block_pos_x == blocks_x - 1 ? false : true;
       left   = block_pos_y == 0                ? false : true;
-      right  = block_pos_y == num_blocks_y - 1 ? false : true;
+      right  = block_pos_y == blocks_y - 1 ? false : true;
 
 
      // ****************Send Part**************** //
@@ -203,7 +210,7 @@ void Solver::ProcessConform(grid& p, const int rank, const int blocks_x,
 
       if (left) {
           float *recv_left = new float[height];
-          MPI_Recv(recv_left, height, MPI_FLOAT, left_rank, 0, MPI_COMM_WORLD,
+          MPI_Recv(recv_left, height, MPI_FLOAT, l_neighbor, 0, MPI_COMM_WORLD,
                    MPI_STATUS_IGNORE);
           for (int i = 0; i < height; ++i) {
               p(i + 1, 0) = recv_left[i];
@@ -280,23 +287,23 @@ void Solver::Solve(int argc, char** argv){
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 
-	int num_blocks_y = 1;
-	while (size / num_blocks_y > 2 * num_blocks_y) {
-		num_blocks_y *= 2;
+	int blocks_y = 1;
+	while (size / blocks_y > 2 * blocks_y) {
+		blocks_y *= 2;
 	}
-	const int num_blocks_x = size / num_blocks_y;
+	const int blocks_x = size / blocks_y;
 
-	const int block_pos_x  = rank / num_blocks_y;
-	const int block_pos_y  = rank % num_blocks_y;
+	const int block_pos_x  = rank / blocks_y;
+	const int block_pos_y  = rank % blocks_y;
 
-	const int block_size_x = (dimension - 1) / num_blocks_x;
-	const int block_size_y = (dimension - 1) / num_blocks_y;
+	const int block_size_x = (dimension - 1) / blocks_x;
+	const int block_size_y = (dimension - 1) / blocks_y;
 
 	const int start_i = std::max(0, block_size_x * block_pos_x - 1);
-	const int end_i   = block_pos_x + 1 < num_blocks_x ? start_i + block_size_x : dim;
+	const int end_i   = block_pos_x + 1 < blocks_x ? start_i + block_size_x : dimension;
 
 	const int start_j = std::max(0, block_size_y * block_pos_y - 1);
-	const int end_j   = block_pos_y + 1 < num_blocks_y ? start_j + block_size_y : dim;
+	const int end_j   = block_pos_y + 1 < blocks_y ? start_j + block_size_y : dimension;
 
 	const int block_height = end_i - start_i + 1;
 	const int block_width  = end_j - start_j + 1;
@@ -352,7 +359,7 @@ void Solver::Solve(int argc, char** argv){
 			rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
 		}
 	}
-	ProcessConform(rk, rank, num_blocks_x, num_blocks_y);
+	ProcessConform(rk, rank, blocks_x, blocks_y);
 
 	for (int i = 1; i < block_height - 1; i++) {
 		for (int j = 1; j < block_width - 1; j++) {
@@ -382,14 +389,14 @@ void Solver::Solve(int argc, char** argv){
 	int count = 0;
 	while (1) {
 		count++;
-		ProcessConform(pk, world_rank, num_blocks_x, num_blocks_y);
+		ProcessConform(pk, rank, blocks_x, blocks_y);
 		for (int i = 0; i < block_height; i++) {
 			for (int j = 0; j < block_width; j++) {
 				term(i, j) = pk(i, j) - p_pred(i, j);
 			}
 		}
 
-		float maximum = max(term);  // Stop Criteria
+		float maximum = term.max();  // Stop Criteria
 		maximum = ProcessMax(maximum, rank, size);
 		if (maximum < eps) {
 			break;
@@ -402,7 +409,7 @@ void Solver::Solve(int argc, char** argv){
 			}
 		}
 
-		ProcessConform(rk, rank, num_blocks_x, num_blocks_y);
+		ProcessConform(rk, rank, blocks_x, blocks_y);
 
 		for (int i = 1; i < block_height - 1; i++) {
 			for (int j = 1; j < block_width - 1; j++) {
@@ -426,7 +433,7 @@ void Solver::Solve(int argc, char** argv){
 				gk(i, j) = rk(i, j) - alpha * gk(i, j);
 			}
 		}
-		ProcessConform(gk, rank, num_blocks_x, num_blocks_y);
+		ProcessConform(gk, rank, blocks_x, blocks_y);
 
 		for (int i = 1; i < block_height - 1; i++) {
 			for (int j = 1; j < block_width - 1; j++) {
@@ -454,7 +461,7 @@ void Solver::Solve(int argc, char** argv){
 		}
 	}
 
-	cout << max(error) << endl;
+	cout << error.max() << endl;
 	cout << count << endl;
 	ofstream res, correct, err;
 

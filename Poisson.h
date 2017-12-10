@@ -33,7 +33,7 @@ class Solver{
       double DiffScheme(const Poisson& const p, const int i, const int j) const;
       double ScalarDot(const Poisson& const p, const Poisson& const q) const;
       float  ProcessDot(float var, const int rank, const int size) const;
-	  float  ProcessMax(float var, const int rank, const int size) const;
+      float  ProcessMax(float var, const int rank, const int size) const;
       void   ProcessConform(Poisson& p, const int rank, const int blocks_x,
                                      const int blocks_y);
 

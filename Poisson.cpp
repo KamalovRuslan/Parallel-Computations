@@ -88,7 +88,7 @@ double Solver::ScalarDot(Poisson& p, Poisson& q) const{
 }
 
 Solver::Solver() :
-	   dimension(100),
+	   dimension(300),
 	   lx(0.0), rx(2.0),
 	   ly(0.0), ry(2.0),
 	   delta((rx - lx) / dimension), delta2(delta * delta),
@@ -494,17 +494,20 @@ void Solver::Solve(int argc, char** argv){
 	MPI_File_close(&file);
 
 	MPI_Barrier(MPI_COMM_WORLD);
-	ifstream in("test.bin");
-	double result;
-	int i = 0;
-	while (in.read(reinterpret_cast<char *>(&result), sizeof(double))) {
-        cout << result << " ";
-		if (i % dimension == 0){
-			cout << endl;
-			i = 0;
-		}
-		++i;
-    }
-
+	if (rank == 0){
+		ifstream in("test.bin");
+		ofstream out("result.txt");
+		float result;
+		int i = 0;
+		while (in.read(reinterpret_cast<char *>(&result), sizeof(float))) {
+			if ((i % (dimension - 1) == 0) && (i != 0)){
+				out << endl;
+			}
+	        out << result << " ";
+			++i;
+	    }
+		cout << i << endl;
+		cout << dimension << endl;
+	}
 	MPI_Finalize();
 }

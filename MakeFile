@@ -1,0 +1,11 @@
+INCLUDES=$(wildcard *.h)
+SOURCES=$(wildcard *.cpp)
+
+.PHONY: clean images
+
+compile:
+	mpicxx -o prac -Wall  main.cpp Poisson.cp
+
+run:
+	./prac
+	python3 plotter.py

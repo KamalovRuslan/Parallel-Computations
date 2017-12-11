@@ -15,7 +15,6 @@ for row in data:
 	row = [float(elem) for elem in row]
 	solve.append(np.array(row))
 solve = np.array(solve)
-
 dim = solve.shape[0]
 x = np.linspace(0.0, 2.0, solve.shape[0])
 y = np.linspace(0.0, 2.0, solve.shape[1])

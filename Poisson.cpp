@@ -7,6 +7,10 @@
 #include "Poisson.h"
 using namespace std;
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 Poisson::Poisson(){
       grid = NULL;
       grid_x = 0; grid_y = 0;
@@ -30,6 +34,9 @@ double& Poisson::operator ()(int x, int y){
 Poisson& Poisson::operator=(const Poisson& tmp) {
     this->grid_x = tmp.grid_x;
     this->grid_y = tmp.grid_y;
+
+	int threadsCount = omp_get_num_procs()
+	#pragma omp parallel for num_threads(threadsCount)
     for (int i = 0; i < grid_x * grid_y; i++) {
         this->grid[i] = tmp.grid[i];
     }
@@ -79,7 +86,10 @@ double Solver::ScalarDot(Poisson& p, Poisson& q) const{
       double scalar_dot = 0;
       int size_x = p.size_x();
       int size_y = p.size_y();
+	  int threadsCount = omp_get_num_procs()
+	  #pragma omp parallel for num_threads(threadsCount)
       for (int i = 1; i < size_x - 1; i++) {
+		  #pragma omp parallel for
           for (int j = 1; j < size_y - 1; j++) {
               scalar_dot += delta2 * p(i, j) * q(i, j);
           }
@@ -117,6 +127,8 @@ float Solver::ProcessDot(float var, const int rank, const int size) const{
 
       float sum = 0.0f;
       if (rank == 0) {
+		  int threadsCount = omp_get_num_procs()
+		  #pragma omp parallel for num_threads(threadsCount)
           for (int i = 0; i < size; i++)
               sum += processes_sum[i];
           delete [] processes_sum;
@@ -137,6 +149,8 @@ float Solver::ProcessMax(float var, const int rank, const int size) const{
       float max;
       if (rank == 0) {
 		  max = processes_max[0];
+		  int threadsCount = omp_get_num_procs()
+		  #pragma omp parallel for num_threads(threadsCount)
 		  for (int i = 1; i < size; i++)
               max = max < processes_max[i] ? processes_max[i] : max;
           delete [] processes_max;
@@ -327,51 +341,63 @@ void Solver::Solve(int argc, char** argv){
 	Poisson check(block_height, block_width);
 	Poisson error(block_height, block_width);
 
+	int threadsCount = omp_get_num_procs()
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i + 1 < block_height; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j + 1 < block_width; j++) {
 			check(i, j) = phi(x(i, start_i), y(j, start_j));
 		}
 	}
 
 	if (start_i == 0) {
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int j = 0; j < block_width; j++) {
 			p(0, j) = phi(x(0, start_i), y(j, start_j));
 		}
 	}
 
 	if (end_i == dimension) {
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int j = 0; j < block_width; j++) {
 			p(block_height - 1, j) = phi(x(block_height - 1, start_i), y(j, start_j));
 		}
 	}
 
 	if (start_j == 0) {
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 0; i < block_height; i++) {
 			p(i, 0) = phi(x(i, start_i), y(0, start_j));
 		}
 	}
 
 	if (end_j == dimension) {
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 0; i < block_height; i++) {
 			p(i, block_width - 1) = phi(x(i, start_i), y(block_width - 1, start_j));
 		}
 	}
 	pk = p;
 
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i < block_height - 1; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j < block_width - 1; j++) {
 			pk(i, j) = 0;
 		}
 	}
-
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i < block_height - 1; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j < block_width - 1; j++) {
 			rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
 		}
 	}
 	ProcessConform(rk, rank, blocks_x, blocks_y);
 
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i < block_height - 1; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j < block_width - 1; j++) {
 			r_laplass(i, j) = DiffScheme(rk, i, j);
 		}
@@ -384,8 +410,9 @@ void Solver::Solve(int argc, char** argv){
 		tau_s2 = ProcessDot(tau_s2, rank, size);
 		tau = tau_s1/tau_s2;
 	}
-
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i < block_height - 1; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j < block_width - 1; j++) {
 			pk(i, j) -= tau * rk(i, j);
 		}
@@ -400,7 +427,9 @@ void Solver::Solve(int argc, char** argv){
 	while (1) {
 		count++;
 		ProcessConform(pk, rank, blocks_x, blocks_y);
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 0; i < block_height; i++) {
+			#pragma omp parallel for
 			for (int j = 0; j < block_width; j++) {
 				term(i, j) = pk(i, j) - p_pred(i, j);
 			}
@@ -413,7 +442,9 @@ void Solver::Solve(int argc, char** argv){
 		}
 
 		p_pred = pk;
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
 			}
@@ -421,12 +452,16 @@ void Solver::Solve(int argc, char** argv){
 
 		ProcessConform(rk, rank, blocks_x, blocks_y);
 
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				g_laplass(i, j) = DiffScheme(gk, i, j);
 			}
 		}
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				r_laplass(i, j) = DiffScheme(rk, i, j);
 			}
@@ -438,14 +473,18 @@ void Solver::Solve(int argc, char** argv){
 		alpha_s2 = ProcessDot(alpha_s2, rank, size);
 
 		alpha = alpha_s1 / alpha_s2;
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				gk(i, j) = rk(i, j) - alpha * gk(i, j);
 			}
 		}
 		ProcessConform(gk, rank, blocks_x, blocks_y);
 
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				g_laplass(i, j) = DiffScheme(gk, i, j);
 			}
@@ -458,14 +497,17 @@ void Solver::Solve(int argc, char** argv){
 		tau_s2 = ProcessDot(tau_s2, rank, size);
 
 		tau = tau_s1/tau_s2;
+		#pragma omp parallel for num_threads(threadsCount)
 		for (int i = 1; i < block_height - 1; i++) {
+			#pragma omp parallel for
 			for (int j = 1; j < block_width - 1; j++) {
 				pk(i, j) -= tau * gk(i, j);
 			}
 		}
 	}
-
+	#pragma omp parallel for num_threads(threadsCount)
 	for (int i = 1; i + 1 < block_height; i++) {
+		#pragma omp parallel for
 		for (int j = 1; j + 1 < block_width; j++) {
 			error(i, j) = (check(i, j) - pk(i, j)) * (check(i, j) - pk(i, j));
 		}
@@ -506,8 +548,6 @@ void Solver::Solve(int argc, char** argv){
 	        out << result << " ";
 			++i;
 	    }
-		cout << i << endl;
-		cout << dimension << endl;
 	}
 	MPI_Finalize();
 }

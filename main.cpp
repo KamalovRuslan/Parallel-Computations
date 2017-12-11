@@ -8,6 +8,10 @@
 #include <mpi.h>
 using namespace std;
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "Poisson.h"
 
 int main(int argc, char** argv){

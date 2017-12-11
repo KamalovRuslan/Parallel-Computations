@@ -35,8 +35,8 @@ Poisson& Poisson::operator=(const Poisson& tmp) {
     this->grid_x = tmp.grid_x;
     this->grid_y = tmp.grid_y;
 
-	int threadsCount = omp_get_num_procs()
-	#pragma omp parallel for num_threads(threadsCount)
+    int threadsCount = omp_get_num_procs()
+    #pragma omp parallel for num_threads(threadsCount)
     for (int i = 0; i < grid_x * grid_y; i++) {
         this->grid[i] = tmp.grid[i];
     }
@@ -52,7 +52,7 @@ int Poisson::size_y() const{
 }
 
 double Poisson::max() const{
-	double maximum = grid[0];
+    double maximum = grid[0];
     for (int i = 1; i < grid_x * grid_y; i++) {
         maximum = maximum < grid[i] ? grid[i] : maximum;
     }

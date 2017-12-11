@@ -86,10 +86,10 @@ double Solver::ScalarDot(Poisson& p, Poisson& q) const{
       double scalar_dot = 0;
       int size_x = p.size_x();
       int size_y = p.size_y();
-	  int threadsCount = omp_get_num_procs()
-	  #pragma omp parallel for num_threads(threadsCount)
+      int threadsCount = omp_get_num_procs()
+      #pragma omp parallel for num_threads(threadsCount)
       for (int i = 1; i < size_x - 1; i++) {
-		  #pragma omp parallel for
+          #pragma omp parallel for
           for (int j = 1; j < size_y - 1; j++) {
               scalar_dot += delta2 * p(i, j) * q(i, j);
           }
@@ -127,8 +127,8 @@ float Solver::ProcessDot(float var, const int rank, const int size) const{
 
       float sum = 0.0f;
       if (rank == 0) {
-		  int threadsCount = omp_get_num_procs()
-		  #pragma omp parallel for num_threads(threadsCount)
+          int threadsCount = omp_get_num_procs()
+          #pragma omp parallel for num_threads(threadsCount)
           for (int i = 0; i < size; i++)
               sum += processes_sum[i];
           delete [] processes_sum;
@@ -149,8 +149,8 @@ float Solver::ProcessMax(float var, const int rank, const int size) const{
       float max;
       if (rank == 0) {
 		  max = processes_max[0];
-		  int threadsCount = omp_get_num_procs()
-		  #pragma omp parallel for num_threads(threadsCount)
+          int threadsCount = omp_get_num_procs()
+          #pragma omp parallel for num_threads(threadsCount)
 		  for (int i = 1; i < size; i++)
               max = max < processes_max[i] ? processes_max[i] : max;
           delete [] processes_max;

@@ -13,11 +13,11 @@ solve = []
 for row in data:
 	row = row.split(' ')[:-1]
 	row = [float(elem) for elem in row]
-	solve.append(np.array(row))
+	solve.append(row)
 solve = np.array(solve)
 dim = solve.shape[0]
-x = np.linspace(0.0, 2.0, solve.shape[0])
-y = np.linspace(0.0, 2.0, solve.shape[1])
+x = np.linspace(-2.0, 2.0, solve.shape[0])
+y = np.linspace(-2.0, 2.0, solve.shape[1])
 xx, yy = np.meshgrid(x, y, sparse=True)
 
 fig = plt.figure()
@@ -32,5 +32,6 @@ ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 fig.colorbar(surf, shrink=0.5, aspect=5)
 ax.view_init(30, 30)
 
-fig.savefig('images/dim_{}.eps'.format(dim))
-plt.close(fig)
+plt.show()
+# fig.savefig('images/dim_{}.eps'.format(dim))
+# plt.close(fig)

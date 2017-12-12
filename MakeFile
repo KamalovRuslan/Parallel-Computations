@@ -4,7 +4,7 @@ SOURCES=$(wildcard *.cpp)
 .PHONY: clean images
 
 compile:
-	mpicxx -o prac -Wall  main.cpp Poisson.cp
+	mpicxx main.cpp Poisson.cpp Poisson.h -o prac -Wall -O3
 
 run:
 	./prac

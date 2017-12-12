@@ -3,6 +3,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <mpi.h>
+#include <string>
 
 #include "Poisson.h"
 using namespace std;
@@ -34,10 +35,10 @@ double& Poisson::operator ()(int x, int y){
 Poisson& Poisson::operator=(const Poisson& tmp) {
     this->grid_x = tmp.grid_x;
     this->grid_y = tmp.grid_y;
-
-    int threadsCount = omp_get_num_procs()
-    #pragma omp parallel for num_threads(threadsCount)
-    for (int i = 0; i < grid_x * grid_y; i++) {
+	int i = 0;
+	#pragma omp parallel
+	#pragma omp for schedule (static)
+    for (i = 0; i < grid_x * grid_y; i++) {
         this->grid[i] = tmp.grid[i];
     }
     return *this;
@@ -86,10 +87,9 @@ double Solver::ScalarDot(Poisson& p, Poisson& q) const{
       double scalar_dot = 0;
       int size_x = p.size_x();
       int size_y = p.size_y();
-      int threadsCount = omp_get_num_procs()
-      #pragma omp parallel for num_threads(threadsCount)
+	  #pragma omp parallel
+      #pragma omp for schedule (static) reduction(+:scalar_dot)
       for (int i = 1; i < size_x - 1; i++) {
-          #pragma omp parallel for
           for (int j = 1; j < size_y - 1; j++) {
               scalar_dot += delta2 * p(i, j) * q(i, j);
           }
@@ -102,19 +102,19 @@ Solver::Solver() :
 	   lx(0.0), rx(2.0),
 	   ly(0.0), ry(2.0),
 	   delta((rx - lx) / dimension), delta2(delta * delta),
-	   eps(1e-4)
+	   eps(1e-4),
+	   fname("result.txt")
 	   { }
 
 Solver::Solver(const int dimension,
-	   const int lx, const int rx,
-	   const int ly, const int ry,
 	   const double eps,
-	   const double delta) :
+	   string fname) :
 	   dimension(dimension),
-	   lx(lx), rx(rx),
-	   ly(ly), ry(ry),
-	   delta(delta), delta2(delta * delta),
-	   eps(eps)
+	   lx(0.0), rx(2.0),
+	   ly(0.0), ry(2.0),
+	   delta((rx - lx) / dimension), delta2(delta * delta),
+	   eps(eps),
+	   fname(fname)
 	   { }
 
 float Solver::ProcessDot(float var, const int rank, const int size) const{
@@ -125,10 +125,10 @@ float Solver::ProcessDot(float var, const int rank, const int size) const{
 
       MPI_Gather(&var, 1, MPI_FLOAT, processes_sum, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-      float sum = 0.0f;
+	  float sum = 0.0f;
       if (rank == 0) {
-          int threadsCount = omp_get_num_procs()
-          #pragma omp parallel for num_threads(threadsCount)
+		  #pragma omp parallel
+	      #pragma omp for schedule (static) reduction(+:sum)
           for (int i = 0; i < size; i++)
               sum += processes_sum[i];
           delete [] processes_sum;
@@ -149,8 +149,6 @@ float Solver::ProcessMax(float var, const int rank, const int size) const{
       float max;
       if (rank == 0) {
 		  max = processes_max[0];
-          int threadsCount = omp_get_num_procs()
-          #pragma omp parallel for num_threads(threadsCount)
 		  for (int i = 1; i < size; i++)
               max = max < processes_max[i] ? processes_max[i] : max;
           delete [] processes_max;
@@ -173,8 +171,8 @@ void Solver::ProcessConform(Poisson& p, const int rank, const int blocks_x,
       float *send_left, *send_right;
       float *send_up,   *send_bottom;
 
-      const int width  = p.size_x() - 2;
-      const int height = p.size_y() - 2;
+      const int width  = p.size_y() - 2;
+      const int height = p.size_x() - 2;
 
       const int l_neighbor = blocks_y * (block_pos_x + 0) + (block_pos_y - 1);
       const int r_neighbor = blocks_y * (block_pos_x + 0) + (block_pos_y + 1);
@@ -185,98 +183,105 @@ void Solver::ProcessConform(Poisson& p, const int rank, const int blocks_x,
       MPI_Request send_request_left, send_request_right;
       MPI_Request send_request_up, send_request_bottom;
 
-      up     = block_pos_x == 0                ? false : true;
+      up     = block_pos_x == 0            ? false : true;
       bottom = block_pos_x == blocks_x - 1 ? false : true;
-      left   = block_pos_y == 0                ? false : true;
+      left   = block_pos_y == 0            ? false : true;
       right  = block_pos_y == blocks_y - 1 ? false : true;
 
-
+	  int i = 0;
      // ****************Send Part**************** //
-      if (left) {
-          send_left = new float[height];
-          for (int i = 0; i < height; ++i) {
-              send_left[i] = p(i + 1, 1);
-          }
+	 #pragma omp parallel
+     #pragma omp sections private(i)
+	 {
+		  #pragma omp section
+	      if (left) {
+	          send_left = new float[height];
+	          for (i = 0; i < height; ++i) {
+	              send_left[i] = p(i + 1, 1);
+	          }
 
-          MPI_Isend(send_left, height, MPI_FLOAT, l_neighbor, 0,
-                    MPI_COMM_WORLD, &send_request_left);
-      }
+	          MPI_Isend(send_left, height, MPI_FLOAT, l_neighbor, 0,
+	                    MPI_COMM_WORLD, &send_request_left);
+	      }
+		  #pragma omp section
+	      if (right) {
+	          send_right = new float[height];
+	          for (i = 0; i < height; ++i) {
+	              send_right[i] = p(i + 1, width);
+	          }
 
-      if (right) {
-          send_right = new float[height];
-          for (int i = 0; i < height; ++i) {
-              send_right[i] = p(i + 1, width);
-          }
+	          MPI_Isend(send_right, height, MPI_FLOAT, r_neighbor, 0,
+	                    MPI_COMM_WORLD, &send_request_right);
+	      }
+		  #pragma omp section
+	      if (up) {
+	          send_up = new float[width];
+	          for (i = 0; i < width; ++i) {
+	              send_up[i] = p(1, i + 1);
+	          }
 
-          MPI_Isend(send_right, height, MPI_FLOAT, r_neighbor, 0,
-                    MPI_COMM_WORLD, &send_request_right);
-      }
+	          MPI_Isend(send_up, width, MPI_FLOAT, u_neighbor, 0,
+	                    MPI_COMM_WORLD, &send_request_up);
+	      }
+		  #pragma omp section
+	      if (bottom) {
+	          send_bottom = new float[width];
+	          for (i = 0; i < width; ++i) {
+	              send_bottom[i] = p(height, i + 1);
+	          }
 
-      if (up) {
-          send_up = new float[width];
-          for (int i = 0; i < width; ++i) {
-              send_up[i] = p(1, i + 1);
-          }
+	          MPI_Isend(send_bottom, width, MPI_FLOAT, b_neighbor, 0,
+	                    MPI_COMM_WORLD, &send_request_bottom);
+	      }
+	  }
+	  #pragma omp parallel
+      #pragma omp sections private(i)
+	  {
+		  #pragma omp section
+		  if (left) {
+			  float *recv_left = new float[height];
+			  MPI_Recv(recv_left, height, MPI_FLOAT, l_neighbor, 0, MPI_COMM_WORLD,
+					   MPI_STATUS_IGNORE);
+			  for (i = 0; i < height; ++i) {
+				  p(i + 1, 0) = recv_left[i];
+			  }
 
-          MPI_Isend(send_up, width, MPI_FLOAT, u_neighbor, 0,
-                    MPI_COMM_WORLD, &send_request_up);
-      }
+			  delete[] recv_left;
+		  }
+		  #pragma omp section
+	      if (right) {
+	          float *recv_right = new float[height];
+	          MPI_Recv(recv_right, height, MPI_FLOAT, r_neighbor, 0, MPI_COMM_WORLD,
+	                   MPI_STATUS_IGNORE);
+			  for (i = 0; i < height; ++i) {
+	              p(i + 1, width + 1) = recv_right[i];
+	          }
 
-      if (bottom) {
-          send_bottom = new float[width];
-          for (int i = 0; i < width; ++i) {
-              send_bottom[i] = p(height, i + 1);
-          }
+	          delete[] recv_right;
+	      }
+		  #pragma omp section
+	      if (up) {
+	          float *recv_up = new float[width];
+	          MPI_Recv(recv_up, width, MPI_FLOAT, u_neighbor, 0, MPI_COMM_WORLD,
+	                   MPI_STATUS_IGNORE);
+			  for (i = 0; i < width; ++i) {
+	              p(0, i + 1) = recv_up[i];
+	          }
 
-          MPI_Isend(send_bottom, width, MPI_FLOAT, b_neighbor, 0,
-                    MPI_COMM_WORLD, &send_request_bottom);
-      }
+	          delete[] recv_up;
+	      }
+		  #pragma omp section
+	      if (bottom) {
+	          float *recv_bottom = new float[width];
+	          MPI_Recv(recv_bottom, width, MPI_FLOAT, b_neighbor, 0, MPI_COMM_WORLD,
+	                   MPI_STATUS_IGNORE);
+			  for (i = 0; i < width; ++i) {
+	              p(height + 1, i + 1) = recv_bottom[i];
+	          }
 
-      if (left) {
-          float *recv_left = new float[height];
-          MPI_Recv(recv_left, height, MPI_FLOAT, l_neighbor, 0, MPI_COMM_WORLD,
-                   MPI_STATUS_IGNORE);
-          for (int i = 0; i < height; ++i) {
-              p(i + 1, 0) = recv_left[i];
-          }
-
-          delete[] recv_left;
-      }
-
-      // ****************Recieve Part**************** //
-
-      if (right) {
-          float *recv_right = new float[height];
-          MPI_Recv(recv_right, height, MPI_FLOAT, r_neighbor, 0, MPI_COMM_WORLD,
-                   MPI_STATUS_IGNORE);
-          for (int i = 0; i < height; ++i) {
-              p(i + 1, width + 1) = recv_right[i];
-          }
-
-          delete[] recv_right;
-      }
-
-      if (up) {
-          float *recv_up = new float[width];
-          MPI_Recv(recv_up, width, MPI_FLOAT, u_neighbor, 0, MPI_COMM_WORLD,
-                   MPI_STATUS_IGNORE);
-          for (int i = 0; i < width; ++i) {
-              p(0, i + 1) = recv_up[i];
-          }
-
-          delete[] recv_up;
-      }
-
-      if (bottom) {
-          float *recv_bottom = new float[width];
-          MPI_Recv(recv_bottom, width, MPI_FLOAT, b_neighbor, 0, MPI_COMM_WORLD,
-                   MPI_STATUS_IGNORE);
-          for (int i = 0; i < width; ++i) {
-              p(height + 1, i + 1) = recv_bottom[i];
-          }
-
-          delete[] recv_bottom;
-      }
+	          delete[] recv_bottom;
+	      }
+	  }
 
      // ****************Wait Part**************** //
       if (left) {
@@ -341,80 +346,94 @@ void Solver::Solve(int argc, char** argv){
 	Poisson check(block_height, block_width);
 	Poisson error(block_height, block_width);
 
-	int threadsCount = omp_get_num_procs()
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i + 1 < block_height; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j + 1 < block_width; j++) {
-			check(i, j) = phi(x(i, start_i), y(j, start_j));
-		}
-	}
+	int i = 0;
+	int j = 0;
 
-	if (start_i == 0) {
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int j = 0; j < block_width; j++) {
-			p(0, j) = phi(x(0, start_i), y(j, start_j));
+	#pragma omp parallel
+	#pragma omp sections private(i, j)
+	{
+		#pragma omp section
+		for (i = 1; i + 1 < block_height; i++) {
+			for (j = 1; j + 1 < block_width; j++) {
+				check(i, j) = phi(x(i, start_i), y(j, start_j));
+			}
 		}
-	}
 
-	if (end_i == dimension) {
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int j = 0; j < block_width; j++) {
-			p(block_height - 1, j) = phi(x(block_height - 1, start_i), y(j, start_j));
+		#pragma omp section
+		if (start_i == 0) {
+			for (j = 0; j < block_width; j++) {
+				p(0, j) = phi(x(0, start_i), y(j, start_j));
+			}
 		}
-	}
 
-	if (start_j == 0) {
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 0; i < block_height; i++) {
-			p(i, 0) = phi(x(i, start_i), y(0, start_j));
+		#pragma omp section
+		if (end_i == dimension) {
+			for (j = 0; j < block_width; j++) {
+				p(block_height - 1, j) = phi(x(block_height - 1, start_i), y(j, start_j));
+			}
 		}
-	}
 
-	if (end_j == dimension) {
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 0; i < block_height; i++) {
-			p(i, block_width - 1) = phi(x(i, start_i), y(block_width - 1, start_j));
+		#pragma omp section
+		if (start_j == 0) {
+			for (i = 0; i < block_height; i++) {
+				p(i, 0) = phi(x(i, start_i), y(0, start_j));
+			}
+		}
+
+		#pragma omp section
+		if (end_j == dimension) {
+			for (i = 0; i < block_height; i++) {
+				p(i, block_width - 1) = phi(x(i, start_i), y(block_width - 1, start_j));
+			}
+
 		}
 	}
 	pk = p;
 
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i < block_height - 1; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j < block_width - 1; j++) {
-			pk(i, j) = 0;
+	#pragma omp parallel
+	#pragma omp sections private(i, j)
+	{
+		#pragma omp section
+		for (i = 1; i < block_height - 1; i++) {
+			for (j = 1; j < block_width - 1; j++) {
+				pk(i, j) = 0;
+			}
 		}
-	}
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i < block_height - 1; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j < block_width - 1; j++) {
-			rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
+
+		#pragma omp section
+		for (i = 1; i < block_height - 1; i++) {
+			for (j = 1; j < block_width - 1; j++) {
+				rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
+			}
 		}
 	}
 	ProcessConform(rk, rank, blocks_x, blocks_y);
 
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i < block_height - 1; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j < block_width - 1; j++) {
-			r_laplass(i, j) = DiffScheme(rk, i, j);
+	#pragma omp parallel
+	#pragma omp sections private(i, j)
+	{
+		#pragma omp section
+		for (i = 1; i < block_height - 1; i++) {
+			for (j = 1; j < block_width - 1; j++) {
+				r_laplass(i, j) = DiffScheme(rk, i, j);
+			}
 		}
 	}
 
+	float tau_s1 = ScalarDot(rk, rk);
+	float tau_s2 = ScalarDot(r_laplass, rk);
+	tau_s1 = ProcessDot(tau_s1, rank, size);
+	tau_s2 = ProcessDot(tau_s2, rank, size);
+	tau = tau_s1 / tau_s2;
+
+	#pragma omp parallel
+	#pragma omp sections private(i, j)
 	{
-		float tau_s1 = ScalarDot(rk, rk);
-		float tau_s2 = ScalarDot(r_laplass, rk);
-		tau_s1 = ProcessDot(tau_s1, rank, size);
-		tau_s2 = ProcessDot(tau_s2, rank, size);
-		tau = tau_s1/tau_s2;
-	}
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i < block_height - 1; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j < block_width - 1; j++) {
-			pk(i, j) -= tau * rk(i, j);
+		#pragma omp section
+		for (i = 1; i < block_height - 1; i++) {
+			for (j = 1; j < block_width - 1; j++) {
+				pk(i, j) -= tau * rk(i, j);
+			}
 		}
 	}
 
@@ -424,14 +443,17 @@ void Solver::Solve(int argc, char** argv){
 
 
 	int count = 0;
-	while (1) {
+	while (true) {
 		count++;
 		ProcessConform(pk, rank, blocks_x, blocks_y);
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 0; i < block_height; i++) {
-			#pragma omp parallel for
-			for (int j = 0; j < block_width; j++) {
-				term(i, j) = pk(i, j) - p_pred(i, j);
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 0; i < block_height; i++) {
+				for (j = 0; j < block_width; j++) {
+					term(i, j) = pk(i, j) - p_pred(i, j);
+				}
 			}
 		}
 
@@ -442,28 +464,33 @@ void Solver::Solve(int argc, char** argv){
 		}
 
 		p_pred = pk;
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					rk(i, j) = DiffScheme(pk, i, j) - F(x(i, start_i), y(j, start_j));
+				}
 			}
 		}
 
 		ProcessConform(rk, rank, blocks_x, blocks_y);
 
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				g_laplass(i, j) = DiffScheme(gk, i, j);
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					g_laplass(i, j) = DiffScheme(gk, i, j);
+				}
 			}
-		}
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				r_laplass(i, j) = DiffScheme(rk, i, j);
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					r_laplass(i, j) = DiffScheme(rk, i, j);
+				}
 			}
 		}
 
@@ -473,22 +500,30 @@ void Solver::Solve(int argc, char** argv){
 		alpha_s2 = ProcessDot(alpha_s2, rank, size);
 
 		alpha = alpha_s1 / alpha_s2;
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				gk(i, j) = rk(i, j) - alpha * gk(i, j);
+
+
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					gk(i, j) = rk(i, j) - alpha * gk(i, j);
+				}
 			}
 		}
 		ProcessConform(gk, rank, blocks_x, blocks_y);
 
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				g_laplass(i, j) = DiffScheme(gk, i, j);
-			}
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					g_laplass(i, j) = DiffScheme(gk, i, j);
+				}
 
+			}
 		}
 
 		float tau_s1 = ScalarDot(rk, gk);
@@ -497,22 +532,28 @@ void Solver::Solve(int argc, char** argv){
 		tau_s2 = ProcessDot(tau_s2, rank, size);
 
 		tau = tau_s1/tau_s2;
-		#pragma omp parallel for num_threads(threadsCount)
-		for (int i = 1; i < block_height - 1; i++) {
-			#pragma omp parallel for
-			for (int j = 1; j < block_width - 1; j++) {
-				pk(i, j) -= tau * gk(i, j);
+
+		#pragma omp parallel
+		#pragma omp sections private(i, j)
+		{
+			#pragma omp section
+			for (i = 1; i < block_height - 1; i++) {
+				for (j = 1; j < block_width - 1; j++) {
+					pk(i, j) -= tau * gk(i, j);
+				}
 			}
 		}
 	}
-	#pragma omp parallel for num_threads(threadsCount)
-	for (int i = 1; i + 1 < block_height; i++) {
-		#pragma omp parallel for
-		for (int j = 1; j + 1 < block_width; j++) {
-			error(i, j) = (check(i, j) - pk(i, j)) * (check(i, j) - pk(i, j));
+	#pragma omp parallel
+	#pragma omp sections private(i, j)
+	{
+		#pragma omp section
+		for (i = 1; i + 1 < block_height; i++) {
+			for (j = 1; j + 1 < block_width; j++) {
+				error(i, j) = (check(i, j) - pk(i, j)) * (check(i, j) - pk(i, j));
+			}
 		}
 	}
-
 	cout << error.max() << endl;
 	cout << count << endl;
 	ofstream res, correct, err;
@@ -538,7 +579,7 @@ void Solver::Solve(int argc, char** argv){
 	MPI_Barrier(MPI_COMM_WORLD);
 	if (rank == 0){
 		ifstream in("test.bin");
-		ofstream out("result.txt");
+		ofstream out(fname.c_str());
 		float result;
 		int i = 0;
 		while (in.read(reinterpret_cast<char *>(&result), sizeof(float))) {

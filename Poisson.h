@@ -1,6 +1,6 @@
 #ifndef POISSON_H
 #define POISSON_H
-
+#include <string>
 
 class Poisson{
   private:
@@ -26,6 +26,7 @@ class Solver{
       double ly; double ry;
       double delta; double delta2;
 	  double eps;
+	  std::string fname;
 
       double F(const double x, const double y) const;
       double phi(const double x, const double y) const;
@@ -42,10 +43,8 @@ class Solver{
   public:
 	  Solver();
 	  Solver(const int dimension,
-	  		 const int lx, const int rx,
-		 	 const int ly, const int ry,
 		 	 const double eps,
-		 	 const double delta);
+		 	 std::string fname);
 
 	  void   Solve(int argc, char** argv);
 };

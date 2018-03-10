@@ -35,9 +35,9 @@ double& Poisson::operator ()(int x, int y){
 Poisson& Poisson::operator=(const Poisson& tmp) {
     this->grid_x = tmp.grid_x;
     this->grid_y = tmp.grid_y;
-	int i = 0;
-	#pragma omp parallel
-	#pragma omp for schedule (static)
+    int i = 0;
+    #pragma omp parallel
+    #pragma omp for schedule (static)
     for (i = 0; i < grid_x * grid_y; i++) {
         this->grid[i] = tmp.grid[i];
     }
@@ -87,7 +87,7 @@ double Solver::ScalarDot(Poisson& p, Poisson& q) const{
       double scalar_dot = 0;
       int size_x = p.size_x();
       int size_y = p.size_y();
-	  #pragma omp parallel
+      #pragma omp parallel
       #pragma omp for schedule (static) reduction(+:scalar_dot)
       for (int i = 1; i < size_x - 1; i++) {
           for (int j = 1; j < size_y - 1; j++) {
@@ -125,10 +125,10 @@ float Solver::ProcessDot(float var, const int rank, const int size) const{
 
       MPI_Gather(&var, 1, MPI_FLOAT, processes_sum, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-	  float sum = 0.0f;
+      float sum = 0.0f;
       if (rank == 0) {
-		  #pragma omp parallel
-	      #pragma omp for schedule (static) reduction(+:sum)
+          #pragma omp parallel
+          #pragma omp for schedule (static) reduction(+:sum)
           for (int i = 0; i < size; i++)
               sum += processes_sum[i];
           delete [] processes_sum;
@@ -148,8 +148,8 @@ float Solver::ProcessMax(float var, const int rank, const int size) const{
 
       float max;
       if (rank == 0) {
-		  max = processes_max[0];
-		  for (int i = 1; i < size; i++)
+          max = processes_max[0];
+          for (int i = 1; i < size; i++)
               max = max < processes_max[i] ? processes_max[i] : max;
           delete [] processes_max;
       }
@@ -188,100 +188,94 @@ void Solver::ProcessConform(Poisson& p, const int rank, const int blocks_x,
       left   = block_pos_y == 0            ? false : true;
       right  = block_pos_y == blocks_y - 1 ? false : true;
 
-	  int i = 0;
+      int i = 0;
      // ****************Send Part**************** //
-	 #pragma omp parallel
+     #pragma omp parallel
      #pragma omp sections private(i)
 	 {
-		  #pragma omp section
-	      if (left) {
-	          send_left = new float[height];
-	          for (i = 0; i < height; ++i) {
-	              send_left[i] = p(i + 1, 1);
-	          }
-
-	          MPI_Isend(send_left, height, MPI_FLOAT, l_neighbor, 0,
+         #pragma omp section
+         if (left) {
+             send_left = new float[height];
+             for (i = 0; i < height; ++i) {
+                 send_left[i] = p(i + 1, 1);
+             }
+             MPI_Isend(send_left, height, MPI_FLOAT, l_neighbor, 0,
 	                    MPI_COMM_WORLD, &send_request_left);
 	      }
-		  #pragma omp section
-	      if (right) {
-	          send_right = new float[height];
-	          for (i = 0; i < height; ++i) {
-	              send_right[i] = p(i + 1, width);
-	          }
-
-	          MPI_Isend(send_right, height, MPI_FLOAT, r_neighbor, 0,
+          #pragma omp section
+          if (right) {
+              send_right = new float[height];
+              for (i = 0; i < height; ++i) {
+                  send_right[i] = p(i + 1, width);
+              }
+              MPI_Isend(send_right, height, MPI_FLOAT, r_neighbor, 0,
 	                    MPI_COMM_WORLD, &send_request_right);
-	      }
-		  #pragma omp section
-	      if (up) {
-	          send_up = new float[width];
-	          for (i = 0; i < width; ++i) {
-	              send_up[i] = p(1, i + 1);
-	          }
-
-	          MPI_Isend(send_up, width, MPI_FLOAT, u_neighbor, 0,
+          }
+          #pragma omp section
+          if (up) {
+              send_up = new float[width];
+              for (i = 0; i < width; ++i) {
+                  send_up[i] = p(1, i + 1);
+              }
+              MPI_Isend(send_up, width, MPI_FLOAT, u_neighbor, 0,
 	                    MPI_COMM_WORLD, &send_request_up);
-	      }
-		  #pragma omp section
-	      if (bottom) {
-	          send_bottom = new float[width];
-	          for (i = 0; i < width; ++i) {
-	              send_bottom[i] = p(height, i + 1);
-	          }
+          }
+          #pragma omp section
+          if (bottom) {
+              send_bottom = new float[width];
+              for (i = 0; i < width; ++i) {
+                  send_bottom[i] = p(height, i + 1);
+          }
 
-	          MPI_Isend(send_bottom, width, MPI_FLOAT, b_neighbor, 0,
+          MPI_Isend(send_bottom, width, MPI_FLOAT, b_neighbor, 0,
 	                    MPI_COMM_WORLD, &send_request_bottom);
-	      }
-	  }
-	  #pragma omp parallel
+          }
+      }
+      #pragma omp parallel
       #pragma omp sections private(i)
-	  {
-		  #pragma omp section
-		  if (left) {
-			  float *recv_left = new float[height];
-			  MPI_Recv(recv_left, height, MPI_FLOAT, l_neighbor, 0, MPI_COMM_WORLD,
+      {
+          #pragma omp section
+          if (left) {
+              float *recv_left = new float[height];
+              MPI_Recv(recv_left, height, MPI_FLOAT, l_neighbor, 0, MPI_COMM_WORLD,
 					   MPI_STATUS_IGNORE);
-			  for (i = 0; i < height; ++i) {
-				  p(i + 1, 0) = recv_left[i];
-			  }
+              for (i = 0; i < height; ++i) {
+                  p(i + 1, 0) = recv_left[i];
+              }
 
-			  delete[] recv_left;
-		  }
-		  #pragma omp section
-	      if (right) {
-	          float *recv_right = new float[height];
-	          MPI_Recv(recv_right, height, MPI_FLOAT, r_neighbor, 0, MPI_COMM_WORLD,
+              delete[] recv_left;
+          }
+          #pragma omp section
+          if (right) {
+              float *recv_right = new float[height];
+              MPI_Recv(recv_right, height, MPI_FLOAT, r_neighbor, 0, MPI_COMM_WORLD,
 	                   MPI_STATUS_IGNORE);
-			  for (i = 0; i < height; ++i) {
-	              p(i + 1, width + 1) = recv_right[i];
-	          }
-
-	          delete[] recv_right;
-	      }
-		  #pragma omp section
-	      if (up) {
-	          float *recv_up = new float[width];
-	          MPI_Recv(recv_up, width, MPI_FLOAT, u_neighbor, 0, MPI_COMM_WORLD,
+              for (i = 0; i < height; ++i) {
+                  p(i + 1, width + 1) = recv_right[i];
+              }
+              delete[] recv_right;
+          }
+          #pragma omp section
+          if (up) {
+              float *recv_up = new float[width];
+              MPI_Recv(recv_up, width, MPI_FLOAT, u_neighbor, 0, MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
+              for (i = 0; i < width; ++i) {
+              p(0, i + 1) = recv_up[i];
+            }
+            delete[] recv_up;
+            }
+            #pragma omp section
+            if (bottom) {
+                float *recv_bottom = new float[width];
+                MPI_Recv(recv_bottom, width, MPI_FLOAT, b_neighbor, 0, MPI_COMM_WORLD,
 	                   MPI_STATUS_IGNORE);
-			  for (i = 0; i < width; ++i) {
-	              p(0, i + 1) = recv_up[i];
-	          }
-
-	          delete[] recv_up;
-	      }
-		  #pragma omp section
-	      if (bottom) {
-	          float *recv_bottom = new float[width];
-	          MPI_Recv(recv_bottom, width, MPI_FLOAT, b_neighbor, 0, MPI_COMM_WORLD,
-	                   MPI_STATUS_IGNORE);
-			  for (i = 0; i < width; ++i) {
-	              p(height + 1, i + 1) = recv_bottom[i];
-	          }
-
-	          delete[] recv_bottom;
-	      }
-	  }
+                for (i = 0; i < width; ++i) {
+                    p(height + 1, i + 1) = recv_bottom[i];
+                }
+                delete[] recv_bottom;
+            }
+        }
 
      // ****************Wait Part**************** //
       if (left) {
